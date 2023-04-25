@@ -25,9 +25,10 @@ extension Node: ExpressibleByStringLiteral {
 }
 
 enum AnchorPoint:String {
-  case left = "left"
-  case right = "right"
+  case start = "start"
+  case end = "end"
   case middle = "middle"
+  case inherit = "inherit"
 }
 
 enum UserUnit:String {
@@ -65,10 +66,24 @@ struct ViewBox {
   let span:Span
 }
 
+extension ViewBox:CustomStringConvertible {
+  var description: String {
+     position.description + span.description
+  }
+}
+
 struct Rectangle {
   let position:Point
   let radius:Point
   let span:Span
+}
+
+extension Rectangle:CustomStringConvertible {
+  var description: String {
+    self.position.description +
+    ((self.radius.x != 0 && self.radius.y != 0) ? "x=\"\(self.radius.x)\" y=\"\(self.radius.y)\"" : "") +
+    self.span.description
+  }
 }
 
 struct Cirlce {
@@ -76,13 +91,114 @@ struct Cirlce {
   let radius:Int
 }
 
+extension Cirlce:CustomStringConvertible {
+  var description: String {
+    "cx=\"\(self.position.x)\" cy=\"\(self.position.y)\" r=\"\(self.radius)\""
+  }
+}
+
 struct Ellipse {
   let position:Point
   let radius:Point
 }
 
+extension Ellipse:CustomStringConvertible {
+  var description: String {
+    "cx=\"\(self.position.x)\" cy=\"\(self.position.y)\" rx=\"\(self.radius.x)\" ry=\"\(self.radius.y)\""
+  }
+}
+
 struct PolyLine {
   let points:[Point]
+}
+
+extension PolyLine: CustomStringConvertible {
+  var description: String {
+    "points=\"" +
+    self.points.map { p in "\(p.x), \(p.y)"}.joined(separator: " ") +
+    "\""
+  }
+}
+
+PolyLine(points: [Point(x: 10, y: 11), Point(x: 12, y: 15)]).description
+
+/**
+ A <polygon> is similar to a <polyline>, in that it is composed of straight line segments connecting a list of points. For polygons though, the path automatically connects the last point with the first, creating a closed shape.
+ **/
+struct Polygon {
+  let points:[Point]
+}
+extension Polygon: CustomStringConvertible {
+  var description: String {
+    "points=\"" +
+    self.points.map { p in "\(p.x), \(p.y)"}.joined(separator: " ") +
+    "\""
+  }
+}
+
+struct BezierCurve {
+  let cp1:Point
+  let cp2:Point
+  let p:Point
+}
+
+struct Arc {
+  let radius:Point
+  let x_axis_rotation:Bool
+  let large_arc_flag:Bool
+  let sweep_flag:Bool
+  let position:Point
+}
+
+enum LineCommandsType {
+  case relative // small letters
+  case absolute // Capitalized letters
+}
+
+enum LineCommands {
+  case move(Point) // M
+//  case relativeMove(Point) // m
+  case lineTo(Point) // L
+//  case relativeLineTo(Point) // l
+  case horizontalLine(Int) // H
+//  case relativeHorizontalLine(Point) // h
+  case verticalLine(Int) // V
+//  case relativeVerticalLine(Point) // v
+  case closePath // z or Z
+  case bezier(BezierCurve) // C
+  case constantSlopeBezier(BezierCurve) // S x2 y2, x y  or s dx2 dy2 dx dy with Cubic bezier curve only
+  case quadraticBezier(BezierCurve) // Q x1 y1, x y
+  case concatQuadraticBezier(BezierCurve) // T x y or t dx dy with quadratic bezier curve only
+//  A rx ry x-axis-rotation large-arc-flag sweep-flag x y
+//  a rx ry x-axis-rotation large-arc-flag sweep-flag dx dy
+  case arc(Arc)
+  
+}
+
+enum CapType {
+  case square
+  case butt
+  case round
+}
+
+enum LineJoinType {
+  case miter
+  case round
+  case bevel
+}
+
+enum LineStyle {
+  case solid
+  case dashed
+  case dashedArray(Int,Int,Int)
+}
+
+struct Stroke {
+  let color:String // TODO Change it to enum or other struct.
+  let width:Int
+  let cap:CapType
+  let joinType:LineJoinType
+  let style:LineStyle
 }
 
 let s = Node.el("svg",
@@ -152,6 +268,10 @@ func version(_ value:String="1.1") -> (String, String) {
   return ("version", value)
 }
 
+func id(_ value:Int) -> (String, String) {
+  return ("id", "\(value)")
+}
+
 func width(_ value: Int, _ suffix:UserUnit = .pixel) -> (String, String) {
   return ("width", "\(value)\(suffix.rawValue)")
 }
@@ -160,7 +280,7 @@ func height(_ value: Int, _ suffix:UserUnit = .pixel) -> (String, String) {
   return ("height", "\(value)\(suffix.rawValue)")
 }
 
-// TODO: make it pass color object
+  // TODO: make it pass color object
 func fill(_ value: String) -> (String, String) {
   return ("fill", "\(value)")
 }
@@ -213,6 +333,13 @@ func y2(_ value: Int) -> (String, String) {
 func stroke(_ value: String) -> (String, String) {
   return ("stroke", value)
 }
+func strokeOpacity(_ value: Float) -> (String, String) {
+  return ("stroke-opacity", "\(value)")
+}
+
+func fillOpacity(_ value: Float) -> (String, String) {
+  return ("fill-opacity", "\(value)")
+}
 
 func strokeWidth(_ value: Int) -> (String, String) {
   return ("stroke-width", "\(value)")
@@ -230,7 +357,7 @@ let n = svg([version(), width(300), height(200), xmlns()],
             [rect([width(100, .percent), height(100, .percent), fill("red")]),
              circle( [cx(150), cy(100), r(80), fill("green")]),
              text([x(150), y(125), fontSize(60), textAnchor(.middle), fill("white")], ["SVG"]),
-            line([x1(10), y1(110), x2(50), y2(150), stroke("black"), strokeWidth(5)])]
+             line([x1(10), y1(110), x2(50), y2(150), stroke("black"), strokeWidth(5)])]
 )
 
 func viewBox(_ value:ViewBox) -> (String, String) {
@@ -259,12 +386,13 @@ webView.loadHTMLString("<header>"+render(n)+"</header>", baseURL: nil)
 
 import PlaygroundSupport
 PlaygroundPage.current.liveView = webView
-
+//
 func pixelToMillimeter(_ value:UInt64) -> Double {
-  // 90 dpi = 0.2822222mm
+    // 90 dpi = 0.2822222mm
   let onePx:Double = 0.2822222
   return Double(value) * onePx
 }
 
 
-print(Point.init(x: 10, y: 10).description)
+  //print(Point.init(x: 10, y: 10).description)
+
